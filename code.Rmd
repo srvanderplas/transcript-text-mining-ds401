@@ -1,0 +1,78 @@
+---
+title: "DS 401 Capstone Topic Modeling"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(tidyr)
+
+directory <- "C:/Users/User/OneDrive/Desktop/Iowa State/Spring 2021/DS 401/TopicModeling/Data/Transcripts/Transcripts-Testimony-Group"
+
+# create corpus from pdfs
+converted <- VCorpus(DirSource(directory), readerControl = list(reader = readPDF)) %>% 
+  DocumentTermMatrix()
+```
+
+```{r}
+library(topicmodels)
+
+trans_lda <- LDA(converted, k=4, control = list(seed = 911))
+trans_lda
+```
+### Word-topic probabilities
+```{r}
+library(tidytext)
+
+trans_topics <- tidy(trans_lda, matrix = "beta")
+trans_topics %>% select(topic, term, beta) %>% arrange(desc(beta))
+
+trans_topics %>% select(beta) 
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+trans_top_terms <- trans_topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+trans_top_terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  scale_y_reordered()
+```
+
+### Pairwise Difference
+
+```{r}
+beta_spread <- trans_topics %>%
+  mutate(topic = paste0("topic", topic)) %>%
+  spread(topic, beta) %>%
+  filter(topic1 > .001 | topic4 > .001) %>%
+  mutate(log_ratio = log2(topic4 / topic1)) %>%
+  arrange(desc(abs(log_ratio))) %>% 
+  head(20) %>%
+  arrange(desc(log_ratio))
+
+beta_spread
+```
+
+### Document-topic probabilities
+```{r}
+trans_doc <- tidy(trans_lda, matrix = "gamma")
+trans_doc %>% arrange(desc(gamma))
+```
+
