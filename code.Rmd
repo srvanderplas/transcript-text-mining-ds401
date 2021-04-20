@@ -7,65 +7,74 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 library(tidyverse)
 library(tidytext)
 library(tm)
 library(tidyr)
+library(topicmodels)
+library(tidytext)
+library(ggplot2)
+library(dplyr)
+```
 
+
+```{r}
 directory <-
   "C:/Users/User/OneDrive/Desktop/Iowa State/Spring 2021/DS 401/TopicModeling/Data/Transcripts/Transcripts-Testimony-Group"
+
+# Note: This is a modified version of the directory where all files are in the same folder
 
 # create corpus from pdfs
 converted <-
   VCorpus(DirSource(directory), readerControl = list(reader = readPDF))
 
-#converted <- tm_map(converted, tolower)
+# remove punctuation
 converted <- tm_map(converted, removePunctuation)
+# remove stop words, see ?stopwords() for more info
 converted <- tm_map(converted, removeWords, stopwords("SMART"))
-#converted <- tm_map(converted, stripWhitespace)
+# remove numbers and convert to DocumentTermMatrix for the LDA function
 converted <-
   tm_map(converted, removeNumbers) %>% DocumentTermMatrix()
 
+# remove empty lines
 rowTotals <- apply(converted, 1, sum)
 converted.new <- converted[rowTotals > 0, ]
 ```
 
 ```{r}
-library(topicmodels)
+# Most of this procedure is based on and modified from https://www.tidytextmining.com/topicmodeling.html
+
+# build the LDA on the transcripts, with 4 clusters since there were 4 predetermined testimony types.
+# NOTE: there is a random seed for the purposes of reproducibility, this can be changed
 
 trans_lda <- LDA(converted.new, k = 4, control = list(seed = 911))
 trans_lda
 ```
+
 ### Word-topic probabilities
 ```{r}
-library(tidytext)
-
+# beta is the per-topic-per-word probabilities
 trans_topics <- tidy(trans_lda, matrix = "beta")
+# sort by the most probable
 trans_topics %>% select(topic, term, beta) %>% arrange(desc(beta))
-```
 
-```{r}
-library(ggplot2)
-library(dplyr)
-
+# graph each topic by the highest probable words
 trans_top_terms <- trans_topics %>%
   group_by(topic) %>%
   top_n(10, beta) %>%
   ungroup() %>%
-  arrange(topic,-beta)
-
-trans_top_terms %>%
+  arrange(topic, -beta) %>%
   mutate(term = reorder_within(term, beta, topic)) %>%
   ggplot(aes(beta, term, fill = factor(topic))) +
   geom_col(show.legend = FALSE) +
-  facet_wrap( ~ topic, scales = "free") +
+  facet_wrap(~ topic, scales = "free") +
   scale_y_reordered()
 ```
 
 ### Pairwise Difference
-
 ```{r}
+# this can be used to compare the words topics relative to each other
 beta_spread <- trans_topics %>%
   mutate(topic = paste0("topic", topic)) %>%
   spread(topic, beta) %>%
@@ -80,6 +89,7 @@ beta_spread
 
 ### Document-topic probabilities
 ```{r}
+# NOTE: these are the directories of the predetermined testimony types
 FingerDir <-
   "C:/Users/User/OneDrive/Desktop/Iowa State/Spring 2021/DS 401/Backup Data/Transcripts/Transcripts-Simon-Cole/Fingerprints"
 FirearmDir <-
@@ -89,25 +99,26 @@ FootwearDir <-
 QDDir <-
   "C:/Users/User/OneDrive/Desktop/Iowa State/Spring 2021/DS 401/Backup Data/Transcripts/Transcripts-Simon-Cole/QuestionedDocuments"
 
+# gamma is the per-document-per-topic probabilities
 trans_doc <- tidy(trans_lda, matrix = "gamma")
+
+# designate which testimony type that each document is from
 og_topic_trans_doc <- trans_doc %>% arrange(desc(gamma)) %>% mutate(
   Fingerprints = document %in% list.files(FingerDir),
   FirearmToolmark = document %in% list.files(FirearmDir),
   Footwear = document %in% list.files(FootwearDir),
   QuestionedDocuments = document %in% list.files(QDDir)
 )
-og_topic_trans_doc
-```
 
-```{r}
+# Classify each document into it's most likely topic
 topic_v_category = trans_doc %>% group_by(document) %>% summarize(gamma = max(gamma)) %>% inner_join(og_topic_trans_doc) %>% pivot_longer(!c(document, topic, gamma),
                                                                                                                                           names_to = "category",
                                                                                                                                           values_to = "status") %>% filter(status == TRUE) %>% select(document, topic, category)
+ 
 
 topic_v_category
 
-# topic_v_category %>% filter(gamma > .5) %>% table(topic, category)
-
+# compare the topic assignment to the predetermined testimony type
 table(topic_v_category$topic, topic_v_category$category)
 ``` 
 
