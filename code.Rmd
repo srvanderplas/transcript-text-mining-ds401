@@ -30,16 +30,20 @@ converted <-
   VCorpus(DirSource(directory), readerControl = list(reader = readPDF))
 
 # remove punctuation
-converted <- tm_map(converted, removePunctuation)
+trans_corpus <- tm_map(converted, removePunctuation)
+# remove numbers
+trans_corpus <-
+  tm_map(trans_corpus, removeNumbers)
+# Lowercase
+trans_corpus <- tm_map(trans_corpus, content_transformer(tolower))
 # remove stop words, see ?stopwords() for more info
-converted <- tm_map(converted, removeWords, stopwords("SMART"))
-# remove numbers and convert to DocumentTermMatrix for the LDA function
-converted <-
-  tm_map(converted, removeNumbers) %>% DocumentTermMatrix()
+# convert to DocumentTermMatrix for the LDA function
+trans_corpus <-
+  tm_map(trans_corpus, removeWords, stopwords("english")) %>% DocumentTermMatrix()
 
 # remove empty lines
-rowTotals <- apply(converted, 1, sum)
-converted.new <- converted[rowTotals > 0, ]
+rowTotals <- apply(trans_corpus, 1, sum)
+converted.new <- trans_corpus[rowTotals > 0, ]
 ```
 
 ```{r}
@@ -64,8 +68,9 @@ trans_top_terms <- trans_topics %>%
   group_by(topic) %>%
   top_n(10, beta) %>%
   ungroup() %>%
-  arrange(topic, -beta) %>%
-  mutate(term = reorder_within(term, beta, topic)) %>%
+  arrange(topic, -beta)
+
+ trans_top_terms %>% mutate(term = reorder_within(term, beta, topic)) %>%
   ggplot(aes(beta, term, fill = factor(topic))) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~ topic, scales = "free") +
